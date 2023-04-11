@@ -1,0 +1,71 @@
+# make header that includes rules for creating auto dependencies. You should include
+# this makefile after you have defined dependencies and a target 'all'.
+
+CXX ?= clang++
+CXXFLAGS ?= -Wall -Wextra -std=c++11 -stdlib=libc++ -fcolor-diagnostics
+INCLUDES ?= 
+
+SRC_DIR ?= .
+STATIC_OBJ_DIR ?= .
+DYNAMIC_OBJ_DIR ?= .
+
+vpath %.cpp $(SRC_DIR)
+
+# Defaults to -DDEBUG
+DEBUG ?= 1
+ifeq ($(DEBUG), 1)
+	CXXFLAGS += -g -O0 -DDEBUG
+else
+	CXXFLAGS += -O2 -DNDEBUG
+endif
+
+VERBOSE ?= 0
+ifeq ($(VERBOSE), 1)
+	SHOW=
+	CXXFLAGS += -v
+else
+	SHOW=@
+endif
+
+# An experiment to make build an link everything with -pthread
+CXXFLAGS += -pthread
+
+RM ?= rm
+SED ?= sed
+MV ?= mv
+
+define make_depend
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -MM $1 | \
+	$(SED) -e 's,$(notdir $2) *:,$2:,' > $3.tmp
+	$(SED)	-e 's/#.*//' \
+			-e 's/^[^:]*: *//' $3.tmp | fmt -1 | \
+	$(SED)	-e 's/ *\\$$//' \
+			-e '/^ *$$/ d' \
+			-e 's/^ *//' \
+			-e 's/$$/ :/' >> $3.tmp
+	$(MV) $3.tmp $3
+endef
+
+
+$(STATIC_OBJ_DIR)/%.o:%.cpp
+	@mkdir -p $(@D)
+	@$(call make_depend, $<, $@, $(subst .o,.d,$@))
+	@echo --building $@
+	$(SHOW)$(CXX) $(CXXFLAGS) $(ARCHFLAGS) $(INCLUDES) -c $< -o $@
+	
+
+$(DYNAMIC_OBJ_DIR)/%.o:%.cpp
+	@mkdir -p $(@D)
+	@$(call make_depend, $<, $@, $(subst .o,.d,$@))
+	@echo --building $@
+	$(SHOW)$(CXX) $(CXXFLAGS) $(ARCHFLAGS) $(INCLUDES) -c $< -o $@
+
+%.o:%.cpp
+	@$(call make_depend, $<, $@, $(subst .o,.d,$@))
+	@echo --building $@
+	$(SHOW)$(CXX) $(CXXFLAGS) $(ARCHFLAGS) $(INCLUDES) -c $< -o $@
+
+
+ifneq "$(MAKECMDGOALS)" "clean"
+-include $(static_dependencies) $(shared_dependencies)
+endif
